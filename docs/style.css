@@ -428,6 +428,38 @@ button:hover {
   font-weight: 700;
 }
 
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.team-card {
+  background: rgba(8, 13, 28, 0.6);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(90, 110, 160, 0.2);
+  display: grid;
+  gap: 8px;
+}
+
+.team-role {
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.team-card strong {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.05rem;
+}
+
+.team-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
 .footer {
   text-align: center;
   color: var(--muted);
@@ -448,7 +480,8 @@ button:hover {
   }
 
   .insights .insight-grid,
-  .model-steps {
+  .model-steps,
+  .team-grid {
     grid-template-columns: 1fr;
   }
 
