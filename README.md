@@ -23,6 +23,7 @@ pip install -r requirements.txt
 ```
 
 3. Place your trained model at `model/model.h5` or `model/model.keras`.
+   For Render, set either `MODEL_PATH` (e.g. `/var/data/model.h5`) or `MODEL_URL` env var.
 4. Run the app:
 
 ```bash
@@ -54,4 +55,4 @@ To enable GitHub Pages:
 Add images to `assets/` and update this section.
 
 ## Disclaimer
-This is a research demo and not a medical device. Do not use for clinical decisions.
+This system is for research purposes only and not a replacement for medical diagnosis.

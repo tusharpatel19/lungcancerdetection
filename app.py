@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
+from urllib.request import urlretrieve
 
 import numpy as np
 from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session, url_for
@@ -19,7 +20,14 @@ except Exception:  # pragma: no cover
 
 APP_ROOT = Path(__file__).resolve().parent
 UPLOAD_DIR = APP_ROOT / "uploads"
-MODEL_PATH = APP_ROOT / "model" / "model.h5"
+DEFAULT_MODEL_CANDIDATES = [
+    APP_ROOT / "model" / "model.h5",
+    APP_ROOT / "model" / "model.keras",
+    Path("/var/data/model.h5"),
+    Path("/var/data/model.keras"),
+]
+MODEL_PATH_ENV = os.getenv("MODEL_PATH", "").strip()
+MODEL_URL = os.getenv("MODEL_URL", "").strip()
 DB_PATH = APP_ROOT / "predictions.db"
 ALLOWED_EXTS = {".png", ".jpg", ".jpeg"}
 IMG_SIZE = (224, 224)
@@ -46,6 +54,36 @@ CORS(
 
 model = None
 model_error = None
+resolved_model_path = None
+
+
+def _resolve_model_path() -> Path | None:
+    candidates: list[Path] = []
+    if MODEL_PATH_ENV:
+        candidates.append(Path(MODEL_PATH_ENV))
+    candidates.extend(DEFAULT_MODEL_CANDIDATES)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _ensure_model_from_url() -> Path | None:
+    if not MODEL_URL:
+        return None
+
+    model_dir = APP_ROOT / "model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    target = model_dir / "downloaded_model.h5"
+    if target.exists():
+        return target
+
+    try:
+        urlretrieve(MODEL_URL, target)  # noqa: S310
+        return target
+    except Exception:
+        return None
 
 
 def _init_db():
@@ -96,19 +134,27 @@ def _require_api_login():
 
 
 def _load_model():
-    global model, model_error
+    global model, model_error, resolved_model_path
     if model is not None or model_error is not None:
         return
 
-    if not MODEL_PATH.exists():
-        model_error = f"Model file not found at {MODEL_PATH}"
+    model_path = _resolve_model_path()
+    if model_path is None:
+        model_path = _ensure_model_from_url()
+    if model_path is None:
+        searched = [str(p) for p in ([Path(MODEL_PATH_ENV)] if MODEL_PATH_ENV else []) + DEFAULT_MODEL_CANDIDATES]
+        model_error = (
+            "Model file not found. Set MODEL_PATH or MODEL_URL. "
+            f"Searched: {', '.join(searched)}"
+        )
         return
 
     try:
         # Lazy import keeps server startup fast and prevents hard crash if TensorFlow install fails.
         import tensorflow as tf  # pylint: disable=import-outside-toplevel
 
-        model = tf.keras.models.load_model(MODEL_PATH)
+        model = tf.keras.models.load_model(model_path)
+        resolved_model_path = model_path
     except Exception as exc:
         model_error = f"Failed to load model: {exc}"
 
@@ -343,14 +389,16 @@ def uploaded_file(filename):
 
 @app.route("/healthz", methods=["GET"])
 def healthz():
-    model_exists = MODEL_PATH.exists()
+    model_path = _resolve_model_path()
     return jsonify(
         {
             "status": "ok",
             "model_loaded": model is not None,
-            "model_exists": model_exists,
+            "model_exists": model_path is not None,
             "model_error": model_error,
-            "model_path": str(MODEL_PATH),
+            "model_path": str(resolved_model_path or model_path or ""),
+            "model_path_env": MODEL_PATH_ENV,
+            "model_url_set": bool(MODEL_URL),
             "api_login_required": REQUIRE_API_LOGIN,
         }
     )
