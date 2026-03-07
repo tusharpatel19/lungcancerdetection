@@ -57,6 +57,32 @@ model_error = None
 resolved_model_path = None
 
 
+def _restore_model_from_parts() -> Path | None:
+    model_dir = APP_ROOT / "model"
+    parts = sorted(model_dir.glob("model.h5.part*"))
+    if not parts:
+        return None
+
+    target = model_dir / "model.h5"
+    if target.exists():
+        return target
+
+    try:
+        with target.open("wb") as out:
+            for part in parts:
+                with part.open("rb") as src:
+                    while True:
+                        chunk = src.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+        return target
+    except Exception:
+        if target.exists():
+            target.unlink()
+        return None
+
+
 def _resolve_model_path() -> Path | None:
     candidates: list[Path] = []
     if MODEL_PATH_ENV:
@@ -66,6 +92,10 @@ def _resolve_model_path() -> Path | None:
     for candidate in candidates:
         if candidate.exists():
             return candidate
+
+    restored = _restore_model_from_parts()
+    if restored is not None:
+        return restored
     return None
 
 
@@ -390,6 +420,7 @@ def uploaded_file(filename):
 @app.route("/healthz", methods=["GET"])
 def healthz():
     model_path = _resolve_model_path()
+    parts_count = len(list((APP_ROOT / "model").glob("model.h5.part*")))
     return jsonify(
         {
             "status": "ok",
@@ -399,6 +430,7 @@ def healthz():
             "model_path": str(resolved_model_path or model_path or ""),
             "model_path_env": MODEL_PATH_ENV,
             "model_url_set": bool(MODEL_URL),
+            "model_parts_found": parts_count,
             "api_login_required": REQUIRE_API_LOGIN,
         }
     )
