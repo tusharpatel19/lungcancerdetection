@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tushar Freelance Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body class="freelance-page">
+  <div class="free-bg">
+    <div class="free-glow free-glow-a"></div>
+    <div class="free-glow free-glow-b"></div>
+  </div>
+
+  <header class="free-topbar">
+    <a href="/freelance" class="free-brand">TUSHAR.STUDIO</a>
+    <nav class="free-nav">
+      <a href="#services">Services</a>
+      <a href="#work">Work</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#contact">Contact</a>
+      <a href="/" class="free-chip">Medical App</a>
+      <a href="/logout" class="free-chip">Logout</a>
+    </nav>
+  </header>
+
+  <main class="free-main">
+    <section class="free-hero">
+      <p class="free-kicker">FREELANCE WEB + AI BUILDER</p>
+      <h1>Hi {{ user_name }}, I design and build websites that get clients, not just likes.</h1>
+      <p class="free-sub">
+        End-to-end delivery for modern portfolios, dashboards, and AI-enabled web apps.
+        Fast turnaround, clean code, mobile-first UI, and deployment support.
+      </p>
+      <div class="free-actions">
+        <a href="#contact" class="free-btn free-btn-primary">Start a Project</a>
+        <a href="#work" class="free-btn free-btn-ghost">View Work</a>
+      </div>
+      <div class="free-stats">
+        <div><strong>25+</strong><span>Projects Delivered</span></div>
+        <div><strong>12</strong><span>AI Workflows Built</span></div>
+        <div><strong>100%</strong><span>Responsive Layouts</span></div>
+      </div>
+    </section>
+
+    <section id="services" class="free-section">
+      <div class="free-headline">
+        <p>Services</p>
+        <h2>What I can build for your business</h2>
+      </div>
+      <div class="free-grid free-grid-3">
+        <article class="free-card">
+          <h3>Business Websites</h3>
+          <p>Landing pages, portfolio sites, and conversion-focused websites with SEO-friendly structure.</p>
+          <ul>
+            <li>Custom UI + copy blocks</li>
+            <li>Mobile optimization</li>
+            <li>Lead capture forms</li>
+          </ul>
+        </article>
+        <article class="free-card">
+          <h3>Web Apps</h3>
+          <p>Flask-based dashboards with login/signup, APIs, role-ready architecture, and clean admin panels.</p>
+          <ul>
+            <li>Authentication system</li>
+            <li>Database integration</li>
+            <li>PDF reports + history</li>
+          </ul>
+        </article>
+        <article class="free-card">
+          <h3>AI Integration</h3>
+          <p>Integrate ML model outputs into practical interfaces that clients can use without technical overhead.</p>
+          <ul>
+            <li>Inference APIs</li>
+            <li>Prediction dashboards</li>
+            <li>Result export workflows</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="work" class="free-section">
+      <div class="free-headline">
+        <p>Selected Work</p>
+        <h2>Recent builds in production style</h2>
+      </div>
+      <div class="free-grid free-grid-2">
+        <article class="free-project free-project-a">
+          <span>Healthcare AI</span>
+          <h3>LungScan Prediction Dashboard</h3>
+          <p>Upload flow, risk output, PDF report generation, login/signup, and history tracking.</p>
+        </article>
+        <article class="free-project free-project-b">
+          <span>SaaS Portfolio</span>
+          <h3>Founder Personal Brand Website</h3>
+          <p>3-page animated marketing site with booking CTA and contact pipeline integration.</p>
+        </article>
+        <article class="free-project free-project-c">
+          <span>Admin Platform</span>
+          <h3>Invoice + Report Automation Tool</h3>
+          <p>Client records, downloadable documents, status tracking, and audit timeline view.</p>
+        </article>
+        <article class="free-project free-project-d">
+          <span>Ecommerce UX</span>
+          <h3>Product Microsite Revamp</h3>
+          <p>Redesigned user journey with conversion-first sections, reducing drop-offs across mobile.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="pricing" class="free-section">
+      <div class="free-headline">
+        <p>Pricing</p>
+        <h2>Simple packages for quick decisions</h2>
+      </div>
+      <div class="free-grid free-grid-3">
+        <article class="free-price">
+          <h3>Starter</h3>
+          <p class="price-tag">$99</p>
+          <p>Single-page website with responsive design and contact section.</p>
+          <a href="#contact">Choose Starter</a>
+        </article>
+        <article class="free-price free-price-featured">
+          <h3>Growth</h3>
+          <p class="price-tag">$249</p>
+          <p>Multi-section business website with forms, animations, and deployment support.</p>
+          <a href="#contact">Choose Growth</a>
+        </article>
+        <article class="free-price">
+          <h3>Pro App</h3>
+          <p class="price-tag">$499</p>
+          <p>Full Flask web app with auth, database, dashboard, and reporting workflows.</p>
+          <a href="#contact">Choose Pro App</a>
+        </article>
+      </div>
+    </section>
+
+    <section class="free-section free-testimonials">
+      <div class="free-headline">
+        <p>Client Feedback</p>
+        <h2>What clients value most</h2>
+      </div>
+      <div class="free-grid free-grid-2">
+        <blockquote class="free-quote">
+          "Fast delivery, clean communication, and exactly the workflow we requested."
+          <cite>Startup Founder, India</cite>
+        </blockquote>
+        <blockquote class="free-quote">
+          "Converted our idea into a production-ready dashboard in less than a week."
+          <cite>Operations Lead, US</cite>
+        </blockquote>
+      </div>
+    </section>
+
+    <section id="contact" class="free-cta">
+      <h2>Need a website or web app this week?</h2>
+      <p>Message with your project goal, timeline, and budget. I will send scope + timeline quickly.</p>
+      <div class="free-actions">
+        <a class="free-btn free-btn-primary" href="mailto:yourname@email.com">Email Me</a>
+        <a class="free-btn free-btn-ghost" href="https://www.linkedin.com" target="_blank" rel="noopener">LinkedIn</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
