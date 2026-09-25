@@ -1,4 +1,6 @@
 import os
+import csv
+import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -11,6 +13,8 @@ import numpy as np
 from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from PIL import Image
 from werkzeug.security import check_password_hash, generate_password_hash
+
+from agent_service import run_agentic_analysis
 
 try:
     from flask_cors import CORS
@@ -30,14 +34,23 @@ MODEL_PATH_ENV = os.getenv("MODEL_PATH", "").strip()
 MODEL_URL = os.getenv("MODEL_URL", "").strip()
 DB_PATH = APP_ROOT / "predictions.db"
 ALLOWED_EXTS = {".png", ".jpg", ".jpeg"}
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", "5242880"))
 IMG_SIZE = (224, 224)
+CLASS_LABELS_FILE = APP_ROOT / "model" / "class_labels.txt"
+CONFUSION_MATRIX_FILE = APP_ROOT / "model" / "confusion_matrix.csv"
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder=str(APP_ROOT / "public"),
+    static_folder=str(APP_ROOT / "public" / "static"),
+    static_url_path="/static",
+)
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "lungguard-dev-secret")
 
-DEFAULT_CORS_ORIGINS = "https://lungcancerdetection-21597.web.app,http://localhost:5000,http://127.0.0.1:5000"
+DEFAULT_CORS_ORIGINS = "*"
 CORS_ORIGINS = [origin.strip() for origin in os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",") if origin.strip()]
 REQUIRE_API_LOGIN = os.getenv("REQUIRE_API_LOGIN", "false").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -47,10 +60,23 @@ CORS(
         r"/predict": {"origins": CORS_ORIGINS},
         r"/save_prediction": {"origins": CORS_ORIGINS},
         r"/history": {"origins": CORS_ORIGINS},
+        r"/database": {"origins": CORS_ORIGINS},
         r"/download_report": {"origins": CORS_ORIGINS},
         r"/healthz": {"origins": CORS_ORIGINS},
+        r"/api/analyze": {"origins": CORS_ORIGINS},
+        r"/api/analysis/*": {"origins": CORS_ORIGINS},
     },
 )
+
+
+@app.after_request
+def add_no_cache_headers(response):
+    if request.path.startswith("/static/") or request.path in {"/", "/index.html"}:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 
 model = None
 model_error = None
@@ -138,7 +164,31 @@ def _init_db():
                 confidence REAL NOT NULL,
                 risk_level TEXT NOT NULL,
                 image_path TEXT,
+                explanation TEXT,
+                research TEXT,
+                sources TEXT,
+                report TEXT,
+                model_version TEXT,
+                status TEXT,
                 created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analysis (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                image_path TEXT,
+                prediction TEXT,
+                confidence REAL,
+                model_version TEXT,
+                explanation TEXT,
+                research TEXT,
+                sources TEXT,
+                report TEXT,
+                created_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'initialized'
             )
             """
         )
@@ -162,6 +212,107 @@ def _require_api_login():
         return jsonify({"error": "Unauthorized. Please login first."}), 401
     return None
 
+
+def _prediction_rows(limit: int = 100) -> list[dict]:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT id, patient_name, prediction_result, confidence, risk_level, image_path, explanation, research, sources, report, model_version, status, created_at
+            FROM predictions
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+def _analysis_rows(limit: int = 20) -> list[dict]:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT id, user_id, image_path, prediction, confidence, model_version, explanation, research, sources, report, created_at, status
+            FROM analysis
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+    result = []
+    for row in rows:
+        item = dict(row)
+        for key in {"explanation", "research", "sources"}:
+            value = item.get(key)
+            if value:
+                try:
+                    item[key] = json.loads(value)
+                except (TypeError, ValueError):
+                    item[key] = value
+        result.append(item)
+    return result
+
+
+def _analysis_by_id(analysis_id: int) -> dict | None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT id, user_id, image_path, prediction, confidence, model_version, explanation, research, sources, report, created_at, status
+            FROM analysis
+            WHERE id = ?
+            """,
+            (analysis_id,),
+        ).fetchone()
+    if row is None:
+        return None
+
+    item = dict(row)
+    for key in {"explanation", "research", "sources"}:
+        value = item.get(key)
+        if value:
+            try:
+                item[key] = json.loads(value)
+            except (TypeError, ValueError):
+                item[key] = value
+    return item
+
+
+def _save_analysis_record(state) -> dict | None:
+    if not state or not getattr(state, "prediction", None):
+        return None
+
+    now = datetime.now(timezone.utc).isoformat()
+    explanation = json.dumps(getattr(state, "explanation", {}) or {}, ensure_ascii=False)
+    research = json.dumps(getattr(state, "research", {}) or {}, ensure_ascii=False)
+    sources = json.dumps(getattr(state, "sources", []) or [], ensure_ascii=False)
+    report = getattr(state, "report", "") or ""
+
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO analysis (user_id, image_path, prediction, confidence, model_version, explanation, research, sources, report, created_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                None,
+                getattr(state, "imagePath", None),
+                getattr(state, "prediction", None),
+                getattr(state, "confidence", None),
+                getattr(state, "modelVersion", "v1"),
+                explanation,
+                research,
+                sources,
+                report,
+                now,
+                getattr(state, "status", "initialized"),
+            ),
+        )
+        analysis_id = cursor.lastrowid
+        conn.commit()
+
+    return _analysis_by_id(analysis_id)
 
 def _load_model():
     global model, model_error, resolved_model_path
@@ -201,6 +352,94 @@ def _preprocess_image(image_path: Path) -> np.ndarray:
     return arr
 
 
+def _looks_like_ct_scan(image_path: Path) -> tuple[bool, str]:
+    try:
+        image = Image.open(image_path).convert("RGB").resize(IMG_SIZE)
+    except Exception:
+        return False, "Uploaded file is not a readable image."
+
+    arr = np.asarray(image, dtype=np.float32)
+    hsv = np.asarray(image.convert("HSV"), dtype=np.float32)
+    mean_saturation = float(hsv[:, :, 1].mean())
+    mean_channel_delta = float((arr.max(axis=2) - arr.min(axis=2)).mean())
+    dark_pixel_ratio = float((arr.mean(axis=2) < 35).mean())
+
+    if mean_saturation > 25 or mean_channel_delta > 12:
+        return False, "Please upload a grayscale lung CT scan image, not a normal photo."
+    if dark_pixel_ratio < 0.05:
+        return False, "This image does not look like a lung CT scan. Please upload a valid CT slice."
+    return True, ""
+
+
+def _labels_from_env() -> list[str]:
+    labels_env = os.getenv("CLASS_LABELS", "").strip()
+    if not labels_env:
+        return []
+    return [label.strip() for label in labels_env.split(",") if label.strip()]
+
+
+def _labels_from_file() -> list[str]:
+    if not CLASS_LABELS_FILE.exists():
+        return []
+    return [line.strip() for line in CLASS_LABELS_FILE.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _labels_from_confusion_matrix() -> list[str]:
+    if not CONFUSION_MATRIX_FILE.exists():
+        return []
+    try:
+        with CONFUSION_MATRIX_FILE.open(newline="", encoding="utf-8") as file:
+            header = next(csv.reader(file), [])
+    except Exception:
+        return []
+    return [label.strip() for label in header[1:] if label.strip()]
+
+
+def _labels_from_training_dirs() -> list[str]:
+    train_dir = APP_ROOT / "data" / "Data" / "train"
+    if not train_dir.exists():
+        return []
+    return sorted(path.name for path in train_dir.iterdir() if path.is_dir())
+
+
+def _class_labels(num_classes: int) -> list[str]:
+    for labels in (_labels_from_env(), _labels_from_file(), _labels_from_confusion_matrix(), _labels_from_training_dirs()):
+        if len(labels) == num_classes:
+            return labels
+
+    if num_classes == 2:
+        return ["Normal", "Lung Cancer"]
+    return [f"Class {i}" for i in range(num_classes)]
+
+
+def _display_label(label: str) -> str:
+    text = label.replace("_", " ").replace(".", " ").strip()
+    lower = text.lower()
+    if lower == "normal":
+        return "Normal"
+    if "adenocarcinoma" in lower:
+        return "Adenocarcinoma"
+    if "large" in lower and "cell" in lower:
+        return "Large Cell Carcinoma"
+    if "squamous" in lower and "cell" in lower:
+        return "Squamous Cell Carcinoma"
+    if "malignant" in lower:
+        return "Malignant"
+    if "benign" in lower:
+        return "Benign"
+    if "lung" in lower and "cancer" in lower:
+        return "Lung Cancer"
+    return " ".join(part.capitalize() for part in text.split()) or label
+
+
+def _is_cancer_label(label: str) -> bool:
+    lower = label.lower()
+    if "normal" in lower or "benign" in lower:
+        return False
+    cancer_terms = ("cancer", "carcinoma", "adenocarcinoma", "squamous", "malignant")
+    return any(term in lower for term in cancer_terms)
+
+
 def _predict(image_path: Path):
     _load_model()
     if model is None:
@@ -210,15 +449,14 @@ def _predict(image_path: Path):
     preds = model.predict(x, verbose=0)
     preds = np.array(preds).squeeze()
 
-    labels_env = os.getenv("CLASS_LABELS", "Normal,Lung Cancer,Benign,Malignant")
-    labels = [label.strip() for label in labels_env.split(",") if label.strip()]
-
     if preds.ndim == 0:
         score = float(preds)
         label = "Lung Cancer" if score >= 0.5 else "Normal"
         confidence = score if label == "Lung Cancer" else 1.0 - score
         return {
             "label": label,
+            "display_label": _display_label(label),
+            "is_cancer": _is_cancer_label(label),
             "confidence": round(confidence, 4),
             "cancer_probability": round(score, 4),
             "labels": ["Normal", "Lung Cancer"],
@@ -234,6 +472,8 @@ def _predict(image_path: Path):
         confidence = score if label == "Lung Cancer" else 1.0 - score
         return {
             "label": label,
+            "display_label": _display_label(label),
+            "is_cancer": _is_cancer_label(label),
             "confidence": round(confidence, 4),
             "cancer_probability": round(score, 4),
             "labels": ["Normal", "Lung Cancer"],
@@ -245,26 +485,27 @@ def _predict(image_path: Path):
 
     if preds.ndim == 1:
         num_classes = preds.shape[0]
-        if len(labels) != num_classes:
-            if num_classes == 4:
-                labels = ["Normal", "Lung Cancer", "Benign", "Malignant"]
-            elif num_classes == 2:
-                labels = ["Normal", "Lung Cancer"]
-            else:
-                labels = [f"Class {i}" for i in range(num_classes)]
+        labels = _class_labels(num_classes)
         idx = int(np.argmax(preds))
         confidence = float(preds[idx])
+        cancer_probability = float(
+            sum(float(preds[i]) for i, label in enumerate(labels) if _is_cancer_label(label))
+        )
         return {
             "label": labels[idx],
+            "display_label": _display_label(labels[idx]),
+            "is_cancer": _is_cancer_label(labels[idx]),
             "confidence": round(confidence, 4),
-            "scores": {labels[i]: round(float(preds[i]), 4) for i in range(num_classes)},
+            "cancer_probability": round(cancer_probability, 4),
+            "scores": {_display_label(labels[i]): round(float(preds[i]), 4) for i in range(num_classes)},
         }, None
 
     return None, "Unexpected prediction output shape"
 
 
 def _risk_level(label: str, confidence: float, cancer_probability: float | None) -> str:
-    if label.lower() == "normal":
+    lower = label.lower()
+    if "normal" in lower or "benign" in lower:
         return "Low"
 
     signal = cancer_probability if cancer_probability is not None else confidence
@@ -329,18 +570,17 @@ def _build_simple_pdf(lines: list[str]) -> bytes:
 
 
 @app.route("/")
-@_login_required
 def index():
     return render_template("index.html", user_name=session.get("user_name", "User"))
 
 
 @app.route("/freelance")
-@_login_required
 def freelance():
     return render_template("freelance.html", user_name=session.get("user_name", "User"))
 
 
 @app.route("/signup", methods=["GET", "POST"])
+@app.route("/signup.html", methods=["GET", "POST"])
 def signup():
     if session.get("user_id"):
         return redirect(url_for("index"))
@@ -378,6 +618,7 @@ def signup():
 
 
 @app.route("/login", methods=["GET", "POST"])
+@app.route("/login.html", methods=["GET", "POST"])
 def login():
     if session.get("user_id"):
         return redirect(url_for("index"))
@@ -412,7 +653,6 @@ def logout():
 
 
 @app.route("/uploads/<path:filename>")
-@_login_required
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
@@ -436,6 +676,80 @@ def healthz():
     )
 
 
+@app.route("/api/analyze", methods=["POST"])
+def analyze_api():
+    if "image" not in request.files:
+        return jsonify({"error": "No image uploaded", "status": "invalid_image"}), 400
+
+    file = request.files["image"]
+    if file.filename == "":
+        return jsonify({"error": "Empty filename", "status": "invalid_image"}), 400
+
+    if not _allowed_file(file.filename):
+        return jsonify({"error": "Unsupported file type", "status": "invalid_image"}), 400
+
+    try:
+        if hasattr(file, "stream"):
+            file.stream.seek(0, os.SEEK_END)
+            size = file.stream.tell()
+            file.stream.seek(0)
+            if size > MAX_UPLOAD_BYTES:
+                return jsonify({"error": f"File exceeds the {MAX_UPLOAD_BYTES} byte limit", "status": "invalid_image"}), 400
+    except Exception:
+        pass
+
+    filename = f"{uuid.uuid4().hex}_{file.filename}"
+    safe_name = "".join(ch for ch in filename if ch.isalnum() or ch in {"-", "_", "."})
+    save_path = UPLOAD_DIR / safe_name
+    file.save(save_path)
+
+    if save_path.stat().st_size > MAX_UPLOAD_BYTES:
+        save_path.unlink(missing_ok=True)
+        return jsonify({"error": f"File exceeds the {MAX_UPLOAD_BYTES} byte limit", "status": "invalid_image"}), 400
+
+    is_ct_scan, ct_error = _looks_like_ct_scan(save_path)
+    if not is_ct_scan:
+        return jsonify({"error": ct_error, "status": "invalid_image"}), 400
+
+    state = run_agentic_analysis(str(save_path))
+    _save_analysis_record(state)
+
+    if state.validationError:
+        return jsonify({
+            "error": state.validationError,
+            "status": "invalid_image",
+            "prediction": state.prediction,
+            "confidence": state.confidence,
+            "modelVersion": state.modelVersion,
+        }), 400
+
+    response = {
+        "status": state.status,
+        "imagePath": state.imagePath,
+        "prediction": state.prediction,
+        "confidence": state.confidence,
+        "modelVersion": state.modelVersion,
+        "explanation": state.explanation,
+        "research": state.research,
+        "sources": state.sources,
+        "report": state.report,
+    }
+    return jsonify(response)
+
+
+@app.route("/api/analysis/history", methods=["GET"])
+def analysis_history_api():
+    return jsonify({"items": _analysis_rows(limit=20)})
+
+
+@app.route("/api/analysis/<int:analysis_id>", methods=["GET"])
+def analysis_detail_api(analysis_id: int):
+    item = _analysis_by_id(analysis_id)
+    if item is None:
+        return jsonify({"error": "Analysis not found"}), 404
+    return jsonify(item)
+
+
 @app.route("/predict", methods=["POST"])
 def predict():
     auth_error = _require_api_login()
@@ -456,6 +770,10 @@ def predict():
     safe_name = "".join(ch for ch in filename if ch.isalnum() or ch in {"-", "_", "."})
     save_path = UPLOAD_DIR / safe_name
     file.save(save_path)
+
+    is_ct_scan, ct_error = _looks_like_ct_scan(save_path)
+    if not is_ct_scan:
+        return jsonify({"error": ct_error}), 400
 
     result, error = _predict(save_path)
     if error:
@@ -495,10 +813,23 @@ def save_prediction():
         conn.execute(
             """
             INSERT INTO predictions (
-                patient_name, prediction_result, confidence, risk_level, image_path, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                patient_name, prediction_result, confidence, risk_level, image_path, explanation, research, sources, report, model_version, status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (patient_name, prediction_result, float(confidence), risk_level, image_path, now),
+            (
+                patient_name,
+                prediction_result,
+                float(confidence),
+                risk_level,
+                image_path,
+                "",
+                "",
+                "[]",
+                "",
+                "v1",
+                "saved",
+                now,
+            ),
         )
         conn.commit()
 
@@ -511,17 +842,26 @@ def history():
     if auth_error:
         return auth_error
 
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """
-            SELECT patient_name, prediction_result, confidence, risk_level, image_path, created_at
-            FROM predictions
-            ORDER BY id DESC
-            LIMIT 20
-            """
-        ).fetchall()
-    return jsonify({"items": [dict(row) for row in rows]})
+    return jsonify({"items": _prediction_rows(limit=20)})
+
+
+@app.route("/database", methods=["GET"])
+def database():
+    auth_error = _require_api_login()
+    if auth_error:
+        return auth_error
+
+    return jsonify(
+        {
+            "database": str(DB_PATH),
+            "tables": {
+                "predictions": {
+                    "columns": ["id", "patient_name", "prediction_result", "confidence", "risk_level", "image_path", "created_at"],
+                    "rows": _prediction_rows(limit=100),
+                }
+            },
+        }
+    )
 
 
 @app.route("/download_report", methods=["POST"])
@@ -539,7 +879,7 @@ def download_report():
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     lines = [
-        "LungGuard CNN - Prediction Report",
+        "Lung Scan Review - Prediction Report",
         f"Generated: {generated_at}",
         "",
         f"Patient Name: {patient_name}",

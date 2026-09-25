@@ -1,0 +1,5 @@
+Actual \ Predicted,adenocarcinoma_left.lower.lobe_T2_N0_M0_Ib,large.cell.carcinoma_left.hilum_T2_N2_M0_IIIa,normal,squamous.cell.carcinoma_left.hilum_T1_N2_M0_IIIa
+adenocarcinoma_left.lower.lobe_T2_N0_M0_Ib,5,91,23,1
+large.cell.carcinoma_left.hilum_T2_N2_M0_IIIa,0,46,5,0
+normal,2,0,52,0
+squamous.cell.carcinoma_left.hilum_T1_N2_M0_IIIa,7,67,16,0

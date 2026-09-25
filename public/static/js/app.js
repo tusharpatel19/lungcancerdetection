@@ -15,12 +15,35 @@ const resultNotes = document.getElementById("resultNotes");
 const riskLevelEl = document.getElementById("riskLevel");
 const chartBars = document.getElementById("chartBars");
 const historyBody = document.getElementById("historyBody");
+const databaseBody = document.getElementById("databaseBody");
+const databaseSummary = document.getElementById("databaseSummary");
+const confusionMatrixImage = document.getElementById("confusionMatrixImage");
+const matrixEmpty = document.getElementById("matrixEmpty");
+const accuracyPlotImage = document.getElementById("accuracyPlotImage");
+const accuracyEmpty = document.getElementById("accuracyEmpty");
 
 let currentFile = null;
 let latestPrediction = null;
+let currentFileLooksLikeCt = false;
 
-const API_BASE = (window.LUNG_GUARD_API_BASE || "").replace(/\/$/, "");
+const computedOrigin = window.location.origin && window.location.origin !== "null" ? window.location.origin : "";
+const API_BASE = (window.LUNG_GUARD_API_BASE || computedOrigin || "http://127.0.0.1:5000").replace(/\/$/, "");
 const apiUrl = (path) => `${API_BASE}${path}`;
+
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+const formatDate = (value) => {
+  const dt = new Date(value);
+  return Number.isNaN(dt.getTime()) ? value : dt.toLocaleString();
+};
+
+const formatConfidence = (value) => `${Math.round(Number(value || 0) * 100)}%`;
 
 const setStatus = (msg, isError = false) => {
   statusEl.textContent = msg;
@@ -45,7 +68,7 @@ const parseJsonResponse = async (response, fallbackMessage) => {
   const raw = await response.text();
   if (raw.trim().startsWith("<")) {
     throw new Error(
-      "Backend API unavailable. Flask backend URL set karo: window.LUNG_GUARD_API_BASE = 'https://your-backend-url'."
+      "Backend API unavailable. Set the Flask backend URL: window.LUNG_GUARD_API_BASE = 'https://your-backend-url'."
     );
   }
 
@@ -55,6 +78,7 @@ const parseJsonResponse = async (response, fallbackMessage) => {
 const resetUI = () => {
   currentFile = null;
   latestPrediction = null;
+  currentFileLooksLikeCt = false;
   fileInput.value = "";
   preview.src = "";
   previewWrap.classList.remove("active");
@@ -65,6 +89,16 @@ const resetUI = () => {
   chartBars.innerHTML = "";
   setRiskPill("--");
   setStatus("");
+};
+
+const resetResult = () => {
+  latestPrediction = null;
+  resultLabel.textContent = "Awaiting upload";
+  resultConfidence.textContent = "--";
+  resultProbability.textContent = "--";
+  resultNotes.textContent = "Upload an image to begin.";
+  chartBars.innerHTML = "";
+  setRiskPill("--");
 };
 
 const renderChart = (scores) => {
@@ -98,15 +132,79 @@ const renderChart = (scores) => {
   });
 };
 
-const handleFile = (file) => {
+const readImageFromFile = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const image = new Image();
+      image.onload = () => resolve({ image, dataUrl: event.target.result });
+      image.onerror = () => reject(new Error("Could not read the image. Please upload a valid PNG or JPG file."));
+      image.src = event.target.result;
+    };
+    reader.onerror = () => reject(new Error("Could not read the image. Please upload a valid PNG or JPG file."));
+    reader.readAsDataURL(file);
+  });
+
+const imageLooksLikeCtScan = (image) => {
+  const size = 96;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0, size, size);
+  const { data } = context.getImageData(0, 0, size, size);
+
+  let totalSaturation = 0;
+  let totalDelta = 0;
+  let darkPixels = 0;
+  let blueDominantPixels = 0;
+  const pixels = size * size;
+
+  for (let index = 0; index < data.length; index += 4) {
+    const red = data[index];
+    const green = data[index + 1];
+    const blue = data[index + 2];
+    const max = Math.max(red, green, blue);
+    const min = Math.min(red, green, blue);
+    const delta = max - min;
+    const brightness = (red + green + blue) / 3;
+
+    totalDelta += delta;
+    totalSaturation += max === 0 ? 0 : delta / max;
+    if (brightness < 35) darkPixels += 1;
+    if (blue > red + 30 && blue > green + 20) blueDominantPixels += 1;
+  }
+
+  const meanSaturation = totalSaturation / pixels;
+  const meanDelta = totalDelta / pixels;
+  const darkRatio = darkPixels / pixels;
+  const blueRatio = blueDominantPixels / pixels;
+
+  return meanSaturation <= 0.12 && meanDelta <= 12 && darkRatio >= 0.05 && blueRatio < 0.08;
+};
+
+const handleFile = async (file) => {
   if (!file) return;
   currentFile = file;
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    preview.src = event.target.result;
+  currentFileLooksLikeCt = false;
+  resetResult();
+
+  try {
+    const { image, dataUrl } = await readImageFromFile(file);
+    preview.src = dataUrl;
     previewWrap.classList.add("active");
-  };
-  reader.readAsDataURL(file);
+    currentFileLooksLikeCt = imageLooksLikeCtScan(image);
+    if (!currentFileLooksLikeCt) {
+      setStatus("This does not look like a CT scan. Please upload a grayscale lung CT image.", true);
+      return;
+    }
+    setStatus("");
+  } catch (error) {
+    currentFile = null;
+    preview.src = "";
+    previewWrap.classList.remove("active");
+    setStatus(error.message, true);
+  }
 };
 
 const renderHistory = (items) => {
@@ -118,15 +216,44 @@ const renderHistory = (items) => {
 
   items.forEach((item) => {
     const tr = document.createElement("tr");
-    const dt = new Date(item.created_at);
     tr.innerHTML = `
-      <td>${item.patient_name}</td>
-      <td>${item.prediction_result}</td>
-      <td>${Math.round(item.confidence * 100)}%</td>
-      <td>${item.risk_level}</td>
-      <td>${Number.isNaN(dt.getTime()) ? item.created_at : dt.toLocaleString()}</td>
+      <td>${escapeHtml(item.patient_name)}</td>
+      <td>${escapeHtml(item.prediction_result)}</td>
+      <td>${formatConfidence(item.confidence)}</td>
+      <td>${escapeHtml(item.risk_level)}</td>
+      <td>${escapeHtml(formatDate(item.created_at))}</td>
     `;
     historyBody.appendChild(tr);
+  });
+};
+
+const renderDatabase = (payload) => {
+  const rows = payload?.tables?.predictions?.rows || [];
+  databaseBody.innerHTML = "";
+  databaseSummary.textContent = `${rows.length} prediction record${rows.length === 1 ? "" : "s"} from ${payload?.database || "predictions.db"}.`;
+
+  if (rows.length === 0) {
+    databaseBody.innerHTML = '<tr><td colspan="7">No rows found in predictions table.</td></tr>';
+    return;
+  }
+
+  rows.forEach((item) => {
+    const tr = document.createElement("tr");
+    const imagePath = item.image_path || "";
+    const imageLink = imagePath
+      ? `<a href="${escapeHtml(imagePath)}" target="_blank" rel="noopener">View image</a>`
+      : "--";
+
+    tr.innerHTML = `
+      <td>${escapeHtml(item.id)}</td>
+      <td>${escapeHtml(item.patient_name)}</td>
+      <td class="db-result">${escapeHtml(item.prediction_result)}</td>
+      <td>${formatConfidence(item.confidence)}</td>
+      <td>${escapeHtml(item.risk_level)}</td>
+      <td>${imageLink}</td>
+      <td>${escapeHtml(formatDate(item.created_at))}</td>
+    `;
+    databaseBody.appendChild(tr);
   });
 };
 
@@ -140,6 +267,47 @@ const loadHistory = async () => {
     setStatus(error.message, true);
   }
 };
+
+const loadDatabase = async () => {
+  if (!databaseBody || !databaseSummary) return;
+
+  try {
+    const response = await fetch(apiUrl("/database"));
+    const data = await parseJsonResponse(response, "Failed to load database");
+    if (!response.ok) throw new Error(data.error || "Failed to load database");
+    renderDatabase(data);
+  } catch (error) {
+    databaseSummary.textContent = error.message;
+    databaseBody.innerHTML = '<tr><td colspan="7">Database records could not be loaded.</td></tr>';
+    setStatus(error.message, true);
+  }
+};
+
+if (confusionMatrixImage && matrixEmpty) {
+  const matrixWrap = matrixEmpty.parentElement;
+  confusionMatrixImage.addEventListener("error", () => {
+    matrixWrap.classList.add("missing");
+  });
+  confusionMatrixImage.addEventListener("load", () => {
+    matrixWrap.classList.remove("missing");
+  });
+  if (confusionMatrixImage.complete && confusionMatrixImage.naturalWidth === 0) {
+    matrixWrap.classList.add("missing");
+  }
+}
+
+if (accuracyPlotImage && accuracyEmpty) {
+  const graphWrap = accuracyEmpty.parentElement;
+  accuracyPlotImage.addEventListener("error", () => {
+    graphWrap.classList.add("missing");
+  });
+  accuracyPlotImage.addEventListener("load", () => {
+    graphWrap.classList.remove("missing");
+  });
+  if (accuracyPlotImage.complete && accuracyPlotImage.naturalWidth === 0) {
+    graphWrap.classList.add("missing");
+  }
+}
 
 fileInput.addEventListener("change", (event) => {
   const file = event.target.files[0];
@@ -169,7 +337,12 @@ predictBtn.addEventListener("click", async () => {
     setStatus("Please upload a CT scan image first.", true);
     return;
   }
+  if (!currentFileLooksLikeCt) {
+    setStatus("This does not look like a CT scan. Please upload a grayscale lung CT image.", true);
+    return;
+  }
 
+  resetResult();
   setStatus("Running prediction...");
   predictBtn.disabled = true;
 
@@ -184,11 +357,11 @@ predictBtn.addEventListener("click", async () => {
     const data = await parseJsonResponse(response, "Prediction failed");
     if (!response.ok) throw new Error(data.error || "Prediction failed");
 
-    const isCancer = (data.label || "").toLowerCase().includes("cancer");
-    resultLabel.textContent = isCancer ? "Cancer Detected" : "Normal";
+    const isCancer = Boolean(data.is_cancer);
+    resultLabel.textContent = isCancer ? "Cancer Detected" : data.display_label || data.label || "Normal";
     resultConfidence.textContent = `${Math.round((data.confidence || 0) * 100)}%`;
     resultProbability.textContent = `${Math.round((data.confidence || 0) * 100)}%`;
-    resultNotes.textContent = `Model label: ${data.label || "N/A"}`;
+    resultNotes.textContent = `Model label: ${data.display_label || data.label || "N/A"}`;
     setRiskPill(data.risk_level || "--");
     renderChart(data.scores || {});
 
@@ -232,6 +405,7 @@ saveBtn.addEventListener("click", async () => {
     if (!response.ok) throw new Error(data.error || "Failed to save prediction");
     setStatus("Prediction saved to database.");
     await loadHistory();
+    await loadDatabase();
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -290,3 +464,4 @@ document.querySelectorAll("[data-scroll]").forEach((button) => {
 
 resetUI();
 loadHistory();
+loadDatabase();

@@ -6,4 +6,5 @@ uploads/
 model/model.h5
 model/model.keras
 data/
+*.db
 .DS_Store

@@ -3,33 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LungGuard CNN | Lung Cancer Detection</title>
+  <title>Lung Scan Review | CNN Project</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Source+Sans+3:wght@300;400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
-  <div class="bg">
-    <div class="orb orb-one"></div>
-    <div class="orb orb-two"></div>
-    <div class="orb orb-three"></div>
-  </div>
-
   <header class="topbar">
     <div class="brand">
-      <div class="logo">LG</div>
+      <div class="logo">LS</div>
       <div>
-        <h1>LungGuard CNN</h1>
-        <p>AI lung cancer screening workflow</p>
+        <h1>Lung Scan Review</h1>
+        <p>CT image classification project</p>
       </div>
     </div>
     <nav class="nav">
-      <span class="user-chip">Hi, Guest</span>
+      <span class="user-chip">Welcome to Lung Scan Review</span>
       <a href="#home">Home</a>
       <a href="#upload">Upload</a>
       <a href="#result">Result</a>
+      <a href="#evaluation">Evaluation</a>
       <a href="#history">History</a>
+      <a href="#database">Database</a>
       <a href="/login.html">Login</a>
       <a href="/signup.html">Sign Up</a>
     </nav>
@@ -38,14 +34,17 @@
   <main class="grid">
     <section id="home" class="card hero">
       <div>
-        <h2>Lung Cancer CT Prediction System</h2>
+        <h2>Agentic Lung Cancer Research Platform</h2>
         <p>
-          Upload a CT scan image and get a CNN-based prediction with confidence score,
-          risk indicator, report download, and history tracking.
+          This application uses an existing CNN model for image classification and then coordinates a lightweight agent workflow to explain the output,
+          summarize educational context, and assemble a research-oriented report. The model prediction is never treated as a definitive diagnosis.
         </p>
         <div class="hero-actions">
           <button class="primary" data-scroll="#upload">Upload CT Scan</button>
-          <button class="ghost" data-scroll="#model">Model Prediction Flow</button>
+          <button class="ghost" data-scroll="#evaluation">View Evaluation</button>
+        </div>
+        <div class="disclaimer-box">
+          This application provides an AI-generated research/educational analysis based on an image classification model. It is not a medical diagnosis and should not be used to make medical decisions.
         </div>
       </div>
       <div class="hero-metrics">
@@ -54,20 +53,20 @@
           <strong>CNN Classifier</strong>
         </div>
         <div class="metric">
-          <span class="metric-label">Input Size</span>
-          <strong>224 x 224</strong>
+          <span class="metric-label">Agent Workflow</span>
+          <strong>Image → Explanation → Research → Report</strong>
         </div>
         <div class="metric">
-          <span class="metric-label">Backend</span>
-          <strong>Flask API</strong>
+          <span class="metric-label">Purpose</span>
+          <strong>Educational & Research Support</strong>
         </div>
       </div>
     </section>
 
     <section id="upload" class="card upload">
       <div class="card-header">
-        <h3>Upload Page</h3>
-        <span class="badge">Step 2</span>
+        <h3>Patient Scan</h3>
+        <span class="badge">Input</span>
       </div>
       <label class="field-label" for="patientName">Patient Name</label>
       <input class="text-input" id="patientName" type="text" placeholder="Enter patient name" />
@@ -75,8 +74,8 @@
         <div class="dropzone" id="dropzone">
           <input type="file" id="fileInput" accept="image/png, image/jpeg" />
           <div>
-            <p>Drag & drop CT scan image</p>
-            <span>or click to upload</span>
+            <p>Drop CT scan image here</p>
+            <span>PNG, JPG, or JPEG</span>
           </div>
         </div>
         <div class="preview">
@@ -87,7 +86,7 @@
         </div>
       </div>
       <div class="actions">
-        <button class="primary" id="predictBtn">Click Predict</button>
+        <button class="primary" id="predictBtn">Analyze</button>
         <button class="ghost" id="resetBtn">Reset</button>
       </div>
       <div class="status" id="status"></div>
@@ -95,8 +94,8 @@
 
     <section id="result" class="card results">
       <div class="card-header">
-        <h3>Result Page</h3>
-        <span class="badge subtle">Step 4</span>
+        <h3>Prediction Result</h3>
+        <span class="badge subtle">Output</span>
       </div>
       <div class="result-body">
         <div class="result-main">
@@ -121,6 +120,16 @@
           </div>
           <div class="chart-bars" id="chartBars"></div>
         </div>
+        <div class="agent-panel">
+          <h4>Agent Activity</h4>
+          <ul>
+            <li>✓ Image validated</li>
+            <li>✓ CNN analysis completed</li>
+            <li>✓ Explanation generated</li>
+            <li>⟳ Research information retrieved</li>
+            <li>○ Final report generation</li>
+          </ul>
+        </div>
         <div class="actions">
           <button class="ghost" id="saveBtn">Save Result</button>
           <button class="primary" id="downloadBtn">Download PDF Report</button>
@@ -129,19 +138,62 @@
     </section>
 
     <section id="model" class="card model">
-      <h3>Model Prediction</h3>
+      <h3>Agent Workflow</h3>
       <div class="model-steps">
         <div>
           <span>1</span>
-          <p>Image sent to backend API.</p>
+          <p>Upload and validate image.</p>
         </div>
         <div>
           <span>2</span>
-          <p>CNN model processes the image.</p>
+          <p>Image Analysis Agent invokes the existing CNN.</p>
         </div>
         <div>
           <span>3</span>
-          <p>Returns prediction + confidence score.</p>
+          <p>Explanation, research, and report agents assemble the final educational summary.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="evaluation" class="card evaluation">
+      <div class="card-header">
+        <div>
+          <h3>Model Evaluation</h3>
+          <p class="card-subtitle">Confusion matrix and training accuracy visualized for the latest model.</p>
+        </div>
+        <span class="badge">Evaluation</span>
+      </div>
+
+      <div class="evaluation-grid">
+        <div class="matrix-card">
+          <div class="matrix-heading">
+            <div class="matrix-title-row">
+              <h4>Confusion Matrix</h4>
+              <span class="matrix-tag">Actual → Predicted</span>
+            </div>
+            <p>Model prediction accuracy split by class.</p>
+          </div>
+          <div class="matrix-wrap">
+            <img id="confusionMatrixImage" src="/static/confusion_matrix.png" alt="Confusion matrix" />
+            <div class="matrix-empty" id="matrixEmpty">
+              <strong>Confusion matrix not generated yet.</strong>
+              <span>Run <code>python train_cnn.py</code> with a test folder to create it.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="graph-card">
+          <div class="matrix-heading">
+            <h4>Training Accuracy</h4>
+            <p>Epoch-wise accuracy curve for training and validation.</p>
+          </div>
+          <div class="graph-wrap">
+            <img id="accuracyPlotImage" src="/static/accuracy_plot.png" alt="Training accuracy graph" />
+            <div class="matrix-empty" id="accuracyEmpty">
+              <strong>Accuracy graph not generated yet.</strong>
+              <span>Run <code>python train_cnn.py</code> to generate the training accuracy chart.</span>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -149,7 +201,7 @@
     <section id="history" class="card insights">
       <div class="card-header">
         <h3>Saved Prediction History</h3>
-        <span class="badge">Step 5</span>
+        <span class="badge">Records</span>
       </div>
       <div class="history-wrap">
         <table class="history-table">
@@ -171,6 +223,37 @@
       </div>
     </section>
 
+    <section id="database" class="card database-card">
+      <div class="card-header">
+        <div>
+          <h3>Predictions Database</h3>
+          <p class="card-subtitle">Readable view of <code>predictions.db</code> records.</p>
+        </div>
+        <span class="badge">SQLite</span>
+      </div>
+      <div class="db-summary" id="databaseSummary">Loading database records...</div>
+      <div class="history-wrap">
+        <table class="history-table database-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Patient</th>
+              <th>Prediction Result</th>
+              <th>Confidence</th>
+              <th>Risk</th>
+              <th>Image</th>
+              <th>Created At</th>
+            </tr>
+          </thead>
+          <tbody id="databaseBody">
+            <tr>
+              <td colspan="7">No database records loaded yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="card disclaimer-card">
       <h3>Disclaimer</h3>
       <p class="disclaimer-text">
@@ -180,10 +263,10 @@
   </main>
 
   <footer class="footer">
-    <p>This system is for research purposes only and not a replacement for medical diagnosis.</p>
+    <p>For project and research use only. Please do not use it as a medical diagnosis tool.</p>
   </footer>
 
-  <script>window.LUNG_GUARD_API_BASE = "https://lungcancerdetection-l4p3.onrender.com";</script>
-  <script src="/static/js/app.js"></script>
+  <script>window.LUNG_GUARD_API_BASE = window.LUNG_GUARD_API_BASE || window.location.origin || "";</script>
+  <script src="/static/js/app.js?v=ct-filter-3"></script>
 </body>
 </html>
